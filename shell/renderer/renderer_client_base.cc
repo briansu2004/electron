@@ -24,6 +24,8 @@
 #include "printing/buildflags/buildflags.h"
 #include "shell/common/color_util.h"
 #include "shell/common/gin_helper/dictionary.h"
+#include "shell/common/node_includes.h"
+#include "shell/common/node_util.h"
 #include "shell/common/options_switches.h"
 #include "shell/common/world_ids.h"
 #include "shell/renderer/browser_exposed_renderer_interfaces.h"
@@ -40,6 +42,7 @@
 #include "third_party/blink/public/web/web_security_policy.h"
 #include "third_party/blink/public/web/web_view.h"
 #include "third_party/blink/renderer/platform/weborigin/scheme_registry.h"  // nogncheck
+#include "third_party/electron_node/src/node_binding.h"
 
 #if defined(OS_MAC)
 #include "base/strings/sys_string_conversions.h"
@@ -84,6 +87,29 @@
 namespace electron {
 
 namespace {
+
+class RenderFrameStatus final : public content::RenderFrameObserver {
+ public:
+  explicit RenderFrameStatus(content::RenderFrame* render_frame)
+      : content::RenderFrameObserver(render_frame) {}
+  ~RenderFrameStatus() final = default;
+
+  bool is_ok() { return render_frame() != nullptr; }
+
+  // RenderFrameObserver implementation.
+  void OnDestruct() final {}
+};
+
+content::RenderFrame* GetRenderFrame(v8::Local<v8::Value> value) {
+  v8::Local<v8::Context> context =
+      v8::Local<v8::Object>::Cast(value)->CreationContext();
+  if (context.IsEmpty())
+    return nullptr;
+  blink::WebLocalFrame* frame = blink::WebLocalFrame::FrameForContext(context);
+  if (!frame)
+    return nullptr;
+  return content::RenderFrame::FromWebFrame(frame);
+}
 
 std::vector<std::string> ParseSchemesCLISwitch(base::CommandLine* command_line,
                                                const char* switch_name) {
@@ -483,11 +509,76 @@ bool RendererClientBase::IsWebViewFrame(
 
   gin_helper::Dictionary frame_element_dict(isolate, frame_element);
 
-  v8::Local<v8::Object> internal;
-  if (!frame_element_dict.GetHidden("internal", &internal))
-    return false;
+  bool is_webview = false;
+  return frame_element_dict.Get("isWebView", &is_webview) && is_webview;
+}
 
-  return !internal.IsEmpty();
+void RendererClientBase::SetupMainWorldOverrides(
+    v8::Handle<v8::Context> context,
+    content::RenderFrame* render_frame) {
+  auto prefs = render_frame->GetBlinkPreferences();
+  // We only need to run the isolated bundle if webview is enabled
+  if (!prefs.webview_tag)
+    return;
+
+  // Setup window overrides in the main world context
+  // Wrap the bundle into a function that receives the isolatedEnv as
+  // an argument.
+  auto* isolate = context->GetIsolate();
+
+  gin_helper::Dictionary isolated_env = gin::Dictionary::CreateEmpty(isolate);
+  isolated_env.SetMethod("allowGuestViewElementDefinition",
+                         AllowGuestViewElementDefinition);
+  isolated_env.SetMethod("getWebFrameId", GetWebFrameId);
+
+  std::vector<v8::Local<v8::String>> isolated_bundle_params = {
+      node::FIXED_ONE_BYTE_STRING(isolate, "isolatedEnv")};
+
+  std::vector<v8::Local<v8::Value>> isolated_bundle_args = {
+      isolated_env.GetHandle()};
+
+  util::CompileAndCall(context, "electron/js2c/isolated_bundle",
+                       &isolated_bundle_params, &isolated_bundle_args, nullptr);
+}
+
+// static
+void RendererClientBase::AllowGuestViewElementDefinition(
+    v8::Isolate* isolate,
+    v8::Local<v8::Object> context,
+    v8::Local<v8::Function> register_cb) {
+  v8::HandleScope handle_scope(isolate);
+  v8::Context::Scope context_scope(context->CreationContext());
+  blink::WebCustomElement::EmbedderNamesAllowedScope embedder_names_scope;
+
+  content::RenderFrame* render_frame = GetRenderFrame(context);
+  RenderFrameStatus render_frame_status(render_frame);
+
+  if (!render_frame_status.is_ok())
+    return;
+
+  render_frame->GetWebFrame()->RequestExecuteV8Function(
+      context->CreationContext(), register_cb, v8::Null(isolate), 0, nullptr,
+      nullptr);
+}
+
+// static
+int RendererClientBase::GetWebFrameId(v8::Local<v8::Value> content_window) {
+  // Get the WebLocalFrame before (possibly) executing any user-space JS while
+  // getting the |params|. We track the status of the RenderFrame via an
+  // observer in case it is deleted during user code execution.
+  content::RenderFrame* render_frame = GetRenderFrame(content_window);
+  RenderFrameStatus render_frame_status(render_frame);
+
+  if (!render_frame_status.is_ok())
+    return -1;
+
+  blink::WebLocalFrame* frame = render_frame->GetWebFrame();
+  // Parent must exist.
+  blink::WebFrame* parent_frame = frame->Parent();
+  DCHECK(parent_frame);
+  DCHECK(parent_frame->IsWebLocalFrame());
+
+  return render_frame->GetRoutingID();
 }
 
 }  // namespace electron

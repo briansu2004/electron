@@ -167,7 +167,6 @@ auto_filenames = {
   ]
 
   isolated_bundle_deps = [
-    "lib/common/type-utils.ts",
     "lib/common/web-view-methods.ts",
     "lib/isolated_renderer/init.ts",
     "lib/renderer/web-view/web-view-attributes.ts",

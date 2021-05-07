@@ -584,14 +584,6 @@ Returns `Promise<Uint8Array>` - Resolves with the generated PDF data.
 
 Prints `webview`'s web page as PDF, Same as `webContents.printToPDF(options)`.
 
-### `<webview>.capturePage([rect])`
-
-* `rect` [Rectangle](structures/rectangle.md) (optional) - The area of the page to be captured.
-
-Returns `Promise<NativeImage>` - Resolves with a [NativeImage](native-image.md)
-
-Captures a snapshot of the page within `rect`. Omitting `rect` will capture the whole visible page.
-
 ### `<webview>.send(channel, ...args)`
 
 * `channel` String

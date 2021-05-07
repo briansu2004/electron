@@ -188,7 +188,6 @@ webview.addEventListener('ipc-message', function (event) {
   console.log(event.channel) // Prints "pong"
 })
 webview.send('ping')
-webview.capturePage().then(image => { console.log(image) })
 
 {
   const opened: boolean = webview.isDevToolsOpened()

@@ -3,7 +3,6 @@ import { WEB_VIEW_CONSTANTS } from '@electron/internal/renderer/web-view/web-vie
 import { syncMethods, asyncMethods, properties } from '@electron/internal/common/web-view-methods';
 import type { WebViewAttribute, PartitionAttribute } from '@electron/internal/renderer/web-view/web-view-attributes';
 import { setupWebViewAttributes } from '@electron/internal/renderer/web-view/web-view-attributes';
-import { deserialize } from '@electron/internal/common/type-utils';
 
 // ID generator.
 let nextId = 0;
@@ -238,10 +237,6 @@ export const setupMethods = (WebViewElement: typeof ElectronInternal.WebViewElem
       return hooks.guestViewInternal.invoke(this.getWebContentsId(), method, args);
     };
   }
-
-  WebViewElement.prototype.capturePage = async function (...args) {
-    return deserialize(await hooks.guestViewInternal.capturePage(this.getWebContentsId(), args));
-  };
 
   const createPropertyGetter = function (property: string) {
     return function (this: ElectronInternal.WebViewElement) {

@@ -1006,27 +1006,6 @@ describe('<webview> tag', function () {
     });
   });
 
-  describe('<webview>.capturePage()', () => {
-    before(function () {
-      // TODO(miniak): figure out why this is failing on windows
-      if (process.platform === 'win32') {
-        this.skip();
-      }
-    });
-
-    it('returns a Promise with a NativeImage', async () => {
-      const src = 'data:text/html,%3Ch1%3EHello%2C%20World!%3C%2Fh1%3E';
-      await loadWebView(webview, { src });
-
-      const image = await webview.capturePage();
-      const imgBuffer = image.toPNG();
-
-      // Check the 25th byte in the PNG.
-      // Values can be 0,2,3,4, or 6. We want 6, which is RGB + Alpha
-      expect(imgBuffer[25]).to.equal(6);
-    });
-  });
-
   ifdescribe(features.isPrintingEnabled())('<webview>.printToPDF()', () => {
     it('rejects on incorrectly typed parameters', async () => {
       const badTypes = {
